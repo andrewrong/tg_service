@@ -23,7 +23,10 @@ type MockOpenAIClient struct {
 }
 
 func (m *MockOpenAIClient) CreateChatCompletion(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
-	return m.CreateChatCompletionFunc(ctx, req)
+	if m.CreateChatCompletionFunc != nil {
+		return m.CreateChatCompletionFunc(ctx, req)
+	}
+	return openai.ChatCompletionResponse{}, nil
 }
 
 	service.client = &MockOpenAIClient{
