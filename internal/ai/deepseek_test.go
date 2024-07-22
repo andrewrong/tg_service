@@ -4,10 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/sashabaranov/go-openai"
-
-	"tg_ai_service/internal/common"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDeepSeekService_GetCompletion(t *testing.T) {
