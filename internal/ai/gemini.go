@@ -26,3 +26,11 @@ type GeminiAiService struct {
 	config *GeminiConfig
 	client *gemini.Client
 }
+
+func (s *GeminiAiService) GetCompletion(prompt string) (string, error) {
+	resp, err := s.client.Complete(prompt)
+	if err != nil {
+		return "", err
+	}
+	return resp.Text, nil
+}
