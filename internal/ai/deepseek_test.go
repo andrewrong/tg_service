@@ -27,6 +27,7 @@ func (m *MockOpenAIClient) CreateChatCompletion(ctx context.Context, req openai.
 		return m.CreateChatCompletionFunc(ctx, req)
 	}
 	return openai.ChatCompletionResponse{}, nil
+	return openai.ChatCompletionResponse{}, nil
 }
 
 	service.client = &MockOpenAIClient{
