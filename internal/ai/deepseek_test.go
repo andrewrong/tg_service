@@ -18,7 +18,15 @@ func TestDeepSeekService_GetCompletion(t *testing.T) {
 	assert.NotNil(t, service)
 
 	// Mock the client's CreateChatCompletion method
-	service.client = &openai.Client{
+type MockOpenAIClient struct {
+	CreateChatCompletionFunc func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error)
+}
+
+func (m *MockOpenAIClient) CreateChatCompletion(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
+	return m.CreateChatCompletionFunc(ctx, req)
+}
+
+	service.client = &MockOpenAIClient{
 		CreateChatCompletionFunc: func(ctx context.Context, req openai.ChatCompletionRequest) (openai.ChatCompletionResponse, error) {
 			return openai.ChatCompletionResponse{
 				Choices: []openai.ChatCompletionChoice{
