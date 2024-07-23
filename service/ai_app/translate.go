@@ -385,9 +385,20 @@ func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang strin
 }
 
 func (t *TranslateApp) MultiChunkTranslation(sourceLang, targetLang string, sourceTextChunks []string, country string, ctx context.Context) ([]string, *common.InnerError) {
-	translation1Chunks := multichunkInitialTranslation(sourceLang, targetLang, sourceTextChunks)
-	reflectionChunks := multichunkReflectOnTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, country)
-	translation2Chunks := multichunkImproveTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, reflectionChunks)
+	translation1Chunks, err := t.multiChunkInitialTranslation(sourceLang, targetLang, sourceTextChunks, ctx)
+	if err != nil {
+		return nil, err
+	}
 
-	return translation2Chunks
+	reflectionChunks, err := t.multiChunkReflectOnTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, country, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	translation2Chunks, err := t.multiChunkImproveTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, reflectionChunks, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return translation2Chunks, nil
 }
