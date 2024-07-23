@@ -966,3 +966,30 @@ I dont give what you give in and theres a blessed the worlds get golden blessing
 
 	fmt.Printf("%s", target)
 }
+func TestGetContextBoundary(t *testing.T) {
+    app := &TranslateApp{chunksInContext: 2}
+
+    tests := []struct {
+        name        string
+        i           int
+        maxBoundary int
+        expectedStart int
+        expectedEnd   int
+    }{
+        {"Middle of the range", 5, 10, 4, 6},
+        {"Start of the range", 0, 10, 0, 2},
+        {"End of the range", 9, 10, 8, 10},
+        {"Single element range", 0, 1, 0, 1},
+        {"Small range", 1, 2, 0, 2},
+        {"Large range", 50, 100, 49, 51},
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            start, end := app.getContextBoundary(tt.i, tt.maxBoundary)
+            if start != tt.expectedStart || end != tt.expectedEnd {
+                t.Errorf("getContextBoundary(%d, %d) = (%d, %d); want (%d, %d)", tt.i, tt.maxBoundary, start, end, tt.expectedStart, tt.expectedEnd)
+            }
+        })
+    }
+}
