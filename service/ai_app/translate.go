@@ -13,15 +13,24 @@ import (
 )
 
 const (
-	MAX_TOKENS_PER_CHUNK = 1000
+	MAX_TOKENS_PER_CHUNK = 500
 )
 
 type TranslateApp struct {
-	ai           common.AI
-	defaultModel string
+	ai              common.AI
+	defaultModel    string
+	chunksInContext int
 }
 
-func (t *TranslateApp) oneChunkInitialTranslation(sourceLang, targetLang, sourceText string, ctx context.Context) (string, *common.InnerError) {
+func NewTranslateApp(ai common.AI, defaultModel string, chunksInContext int) *TranslateApp {
+	return &TranslateApp{
+		ai:              ai,
+		defaultModel:    defaultModel,
+		chunksInContext: chunksInContext,
+	}
+}
+
+func (t *TranslateApp) oneChunkInitialTranslation(sourceLang, targetLang, sourceText string, ctx context.Context) (string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation from %s to %s.", sourceLang, targetLang)
 
 	translationPrompt := fmt.Sprintf("This is an %s to %s translation, please provide the %s translation for this text. Do not provide any explanations or text apart from the translation.\n%s: %s\n\n%s:", sourceLang, targetLang, targetLang, sourceLang, sourceText, targetLang)
@@ -34,7 +43,7 @@ func (t *TranslateApp) oneChunkInitialTranslation(sourceLang, targetLang, source
 	return translation, nil
 }
 
-func (t *TranslateApp) oneChunkReflectOnTranslation(sourceLang, targetLang, sourceText, translation1, country string, ctx context.Context) (string, *common.InnerError) {
+func (t *TranslateApp) oneChunkReflectOnTranslation(sourceLang, targetLang, sourceText, translation1, country string, ctx context.Context) (string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist specializing in translation from %s to %s. You will be provided with a source text and its translation and your goal is to improve the translation.", sourceLang, targetLang)
 
 	var reflectionPrompt string
@@ -69,7 +78,7 @@ func (t *TranslateApp) oneChunkReflectOnTranslation(sourceLang, targetLang, sour
 	return reflection, nil
 }
 
-func (t *TranslateApp) oneChunkImproveTranslation(sourceLang, targetLang, sourceText, translation1, reflection string, ctx context.Context) (string, *common.InnerError) {
+func (t *TranslateApp) oneChunkImproveTranslation(sourceLang, targetLang, sourceText, translation1, reflection string, ctx context.Context) (string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation editing from %s to %s.", sourceLang, targetLang)
 
 	prompt := fmt.Sprintf(`Your task is to carefully read, then edit, a translation from %s to %s, taking into account a list of expert suggestions and
@@ -89,17 +98,20 @@ follows:\n\n<SOURCE_TEXT>\n%s\n</SOURCE_TEXT>\n\n<TRANSLATION>\n%s\n</TRANSLATIO
 	return translation2, nil
 }
 
-func (t *TranslateApp) oneChunkTranslateText(sourceLang, targetLang, sourceText, country string, ctx context.Context) (string, *common.InnerError) {
+func (t *TranslateApp) oneChunkTranslateText(sourceLang, targetLang, sourceText, country string, ctx context.Context) (string, error) {
+	log.Infof("[single step1] start chunk initial translation for %s to %s", sourceLang, targetLang)
 	translation1, err := t.oneChunkInitialTranslation(sourceLang, targetLang, sourceText, ctx)
 	if err != nil {
 		return "", err
 	}
 
+	log.Infof("[single step2] reflect translation for %s to %s", sourceLang, targetLang)
 	reflection, err := t.oneChunkReflectOnTranslation(sourceLang, targetLang, sourceText, translation1, country, ctx)
 	if err != nil {
 		return "", err
 	}
 
+	log.Infof("[single step3] improve translation for %s to %s", sourceLang, targetLang)
 	translation2, err := t.oneChunkImproveTranslation(sourceLang, targetLang, sourceText, translation1, reflection, ctx)
 	if err != nil {
 		return "", err
@@ -108,8 +120,12 @@ func (t *TranslateApp) oneChunkTranslateText(sourceLang, targetLang, sourceText,
 	return translation2, nil
 }
 
-func numTokensInString(inputStr string, encodingName tokenizer.Encoding) (int, *common.InnerError) {
+func numTokensInString(inputStr string, encodingName tokenizer.Encoding) (int, error) {
 	encoding, err := tokenizer.Get(encodingName)
+	if inputStr == "" {
+		return 0, nil
+	}
+
 	if err != nil {
 		log.Errorf("Failed to get encoding: %s", err)
 		return 0, &common.InnerError{ErrType: common.ParameterError, ErrMsg: err.Error(), Code: 0}
@@ -139,7 +155,11 @@ func calculateChunkSize(tokenCount, tokenLimit int) int {
 	return chunkSize
 }
 
-func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country string, maxTokens int, ctx context.Context) (string, *common.InnerError) {
+func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country string, maxTokens int, ctx context.Context) (string, error) {
+	if maxTokens <= 0 {
+		maxTokens = MAX_TOKENS_PER_CHUNK
+	}
+
 	numTokensInText, err := numTokensInString(sourceText, "cl100k_base")
 	if err != nil {
 		return "", err
@@ -168,6 +188,8 @@ func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country str
 			}
 		}
 
+		log.Infof("Translation chunks: %v", len(sourceTextChunks))
+
 		translation2Chunks, err := t.MultiChunkTranslation(sourceLang, targetLang, sourceTextChunks, country, ctx)
 		if err != nil {
 			return "", &common.InnerError{
@@ -181,7 +203,7 @@ func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country str
 	}
 }
 
-func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang string, sourceTextChunks []string, ctx context.Context) ([]string, *common.InnerError) {
+func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang string, sourceTextChunks []string, ctx context.Context) ([]string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation from %s to %s.", sourceLang, targetLang)
 	translationPrompt := `Your task is to provide a professional translation from %s to %s of PART of a text.
 
@@ -202,8 +224,9 @@ func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang strin
 
 	translationChunks := make([]string, 0)
 	for i := range sourceTextChunks {
-		taggedText := strings.Join(sourceTextChunks[:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
-			strings.Join(sourceTextChunks[i+1:], "")
+		startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
+		taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
+			strings.Join(sourceTextChunks[i+1:endIdx], "")
 		prompt := fmt.Sprintf(translationPrompt, sourceLang, targetLang, taggedText, sourceTextChunks[i])
 		translation, err := t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
 
@@ -218,10 +241,12 @@ func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang strin
 		translationChunks = append(translationChunks, translation)
 	}
 
+	log.Infof("Translation completed, total %d chunks", len(translationChunks))
+
 	return translationChunks, nil
 }
 
-func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks []string, country string, ctx context.Context) ([]string, *common.InnerError) {
+func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks []string, country string, ctx context.Context) ([]string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist specializing in translation from %s to %s. You will be provided with a source text and its translation and your goal is to improve the translation.", sourceLang, targetLang)
 
 	var reflectionPrompt string
@@ -292,8 +317,9 @@ func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang str
 
 	reflectionChunks := make([]string, 0)
 	for i := range sourceTextChunks {
-		taggedText := strings.Join(sourceTextChunks[:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
-			strings.Join(sourceTextChunks[i+1:], "")
+		startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
+		taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
+			strings.Join(sourceTextChunks[i+1:endIdx], "")
 		reflection := ""
 		var err error = nil
 		if country != "" {
@@ -320,7 +346,7 @@ func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang str
 	return reflectionChunks, nil
 }
 
-func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks, reflectionChunks []string, ctx context.Context) ([]string, *common.InnerError) {
+func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks, reflectionChunks []string, ctx context.Context) ([]string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation editing from %s to %s.", sourceLang, targetLang)
 
 	improvementPrompt := `Your task is to carefully read, then improve, a translation from %s to %s, taking into
@@ -362,8 +388,10 @@ func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang strin
 
 	translation2Chunks := []string{}
 	for i := range sourceTextChunks {
-		taggedText := strings.Join(sourceTextChunks[:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
-			strings.Join(sourceTextChunks[i+1:], "")
+		startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
+		log.Infof("context start,end [%d, %d]", startIdx, endIdx)
+		taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
+			strings.Join(sourceTextChunks[i+1:endIdx], "")
 		prompt := fmt.Sprintf(improvementPrompt, sourceLang, targetLang, taggedText, sourceTextChunks[i], translation1Chunks[i], reflectionChunks[i],
 			targetLang)
 		translation2, err := t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
@@ -384,7 +412,7 @@ func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang strin
 
 }
 
-func (t *TranslateApp) MultiChunkTranslation(sourceLang, targetLang string, sourceTextChunks []string, country string, ctx context.Context) ([]string, *common.InnerError) {
+func (t *TranslateApp) MultiChunkTranslation(sourceLang, targetLang string, sourceTextChunks []string, country string, ctx context.Context) ([]string, error) {
 	translation1Chunks, err := t.multiChunkInitialTranslation(sourceLang, targetLang, sourceTextChunks, ctx)
 	if err != nil {
 		return nil, err
@@ -401,4 +429,18 @@ func (t *TranslateApp) MultiChunkTranslation(sourceLang, targetLang string, sour
 	}
 
 	return translation2Chunks, nil
+}
+
+func (t *TranslateApp) getContextBoundary(i int, maxBoundary int) (int, int) {
+	offset := t.chunksInContext / 2
+
+	startIdx := i - offset
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	endIdx := i + offset + 1
+	if endIdx >= maxBoundary {
+		endIdx = maxBoundary
+	}
+	return startIdx, endIdx
 }
