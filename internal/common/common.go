@@ -67,6 +67,20 @@ type TranslateRecord struct {
 	Steps       []*TranslateStepRecord `json:"steps"`
 }
 
-func (t *TranslateRecord) String() string {
+import (
+	"fmt"
+	"strings"
+)
 
+func (t *TranslateRecord) String() string {
+	var stepsInfo []string
+	for _, step := range t.Steps {
+		stepInfo := fmt.Sprintf("Step: %s, Cost: %dms\n", step.StepName, step.SumCost)
+		for _, record := range step.Records {
+			stepInfo += fmt.Sprintf("  - Cost: %dms, Input Tokens: %d, Output Tokens: %d\n", record.Cost, record.InputToken, record.OutputToken)
+		}
+		stepsInfo = append(stepsInfo, stepInfo)
+	}
+	return fmt.Sprintf("Source Lang: %s\nTarget Lang: %s\nMax Tokens: %d\nInput Tokens: %d\nChunks Count: %d\nSteps:\n%s",
+		t.SourceLang, t.TargetLang, t.MaxTokens, t.InputTokens, t.ChunksCount, strings.Join(stepsInfo, "\n"))
 }
