@@ -20,7 +20,7 @@ type Checker interface {
 }
 
 type AI interface {
-	GetCompletion(prompt, systemMessage, mode string, temperature float32, jsonModel bool, ctx context.Context) (string, int, error)
+	GetCompletion(prompt, systemMessage, mode string, temperature float32, jsonModel bool, ctx context.Context) (string, error)
 }
 
 // isValidURL 解析并验证 URL 的合法性
