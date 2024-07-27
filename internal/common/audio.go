@@ -77,5 +77,39 @@ func OggToMp3(reader io.ReadCloser, writer io.WriteSeeker) error {
 	return nil
 }
 
+func OggToMp3(reader io.ReadCloser, writer io.WriteSeeker) error {
+	if reader == nil || writer == nil {
+		log.Errorf("invalid reader or writer")
+		return &InnerError{
+			ErrType: ParameterError,
+			ErrMsg:  "invalid reader or writer",
+			Code:    0,
+		}
+	}
+
+	streamer, format, err := vorbis.Decode(reader)
+	if err != nil {
+		log.Errorf("decode ogg error: %v", err)
+		return &InnerError{
+			ErrType: ExternalServiceError,
+			ErrMsg:  fmt.Sprintf("decode ogg error:%s", err.Error()),
+			Code:    0,
+		}
+	}
+	defer streamer.Close()
+
+	// 将音频数据从OGG流写入MP3文件
+	err = mp3.Encode(writer, streamer, format)
+	if err != nil {
+		log.Errorf("encode mp3 error: %v", err)
+		return &InnerError{
+			ErrType: ExternalServiceError,
+			ErrMsg:  fmt.Sprintf("encode mp3 error:%s", err.Error()),
+			Code:    0,
+		}
+	}
+	return nil
+}
+
 	return nil
 }
