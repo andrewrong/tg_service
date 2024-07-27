@@ -184,6 +184,19 @@ func (mws *MemoryWriteSeeker) Write(p []byte) (n int, err error) {
 	return
 }
 
+// Read 实现 io.Reader 接口
+func (mws *MemoryWriteSeeker) Read(p []byte) (n int, err error) {
+	n, err = mws.buf.ReadAt(p, mws.offset)
+	if err == io.EOF {
+		return n, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	mws.offset += int64(n)
+	return n, nil
+}
+
 // Seek 实现 io.Seeker 接口
 func (mws *MemoryWriteSeeker) Seek(offset int64, whence int) (int64, error) {
 	var newOffset int64
