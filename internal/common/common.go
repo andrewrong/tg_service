@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -167,9 +168,14 @@ func NewMemoryWriteSeeker() *MemoryWriteSeeker {
 
 // Write 实现 io.Writer 接口
 func (mws *MemoryWriteSeeker) Write(p []byte) (n int, err error) {
+	if mws.offset > int64(mws.buf.Len()) {
+		return 0, errors.New("offset is beyond buffer length")
+	}
 	// 先调整缓冲区大小以适应新的写入
 	if mws.offset != int64(mws.buf.Len()) {
-		mws.buf.Bytes() = append(mws.buf.Bytes()[:mws.offset], p...)
+		content := mws.buf.Bytes()
+		newInsertContent := append(mws.buf.Bytes()[:mws.offset], p...)
+		mws.buf = bytes.NewBuffer(append(newInsertContent, content...))
 	} else {
 		mws.buf.Write(p)
 	}
