@@ -1,8 +1,16 @@
 package common
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"net/url"
+	"strings"
+
+	"github.com/yuin/goldmark"
+
+	"tg_ai_service/internal/log"
 )
 
 type Checker interface {
@@ -21,6 +29,28 @@ type Checker interface {
 
 type AI interface {
 	GetCompletion(prompt, systemMessage, mode string, temperature float32, jsonModel bool, ctx context.Context) (string, error)
+	GetTranscription(prompt string, reader io.Reader, mode string, temperature float32, audioFormat TranscriptionFormat, ctx context.Context) (string, error)
+}
+
+type TranscriptionFormat string
+
+const (
+	JSON  TranscriptionFormat = "json"
+	TEXT  TranscriptionFormat = "text"
+	SRT   TranscriptionFormat = "srt"
+	VTT   TranscriptionFormat = "vtt"
+	VJSON TranscriptionFormat = "verbose_json"
+)
+
+var TranscriptionFormats = []TranscriptionFormat{JSON, TEXT, SRT, VTT, VJSON}
+
+func IsValidTranscriptionFormat(t TranscriptionFormat) bool {
+	for _, v := range TranscriptionFormats {
+		if v == t {
+			return true
+		}
+	}
+	return false
 }
 
 // isValidURL 解析并验证 URL 的合法性
@@ -64,13 +94,9 @@ type TranslateRecord struct {
 	MaxTokens   int                    `json:"max_token"`    // 最大token
 	InputTokens int                    `json:"input_tokens"` // 输入token个数
 	ChunksCount int                    `json:"chunks_count"` // 分块个数
+	ChunkTokens int                    `json:"chunk_tokens"` // 分块token
 	Steps       []*TranslateStepRecord `json:"steps"`
 }
-
-import (
-	"fmt"
-	"strings"
-)
 
 func (t *TranslateRecord) String() string {
 	var stepsInfo []string
@@ -81,6 +107,49 @@ func (t *TranslateRecord) String() string {
 		}
 		stepsInfo = append(stepsInfo, stepInfo)
 	}
-	return fmt.Sprintf("Source Lang: %s\nTarget Lang: %s\nMax Tokens: %d\nInput Tokens: %d\nChunks Count: %d\nSteps:\n%s",
+	return fmt.Sprintf("\nSource Lang: %s\nTarget Lang: %s\nMax Tokens: %d\nInput Tokens: %d\nChunks Count: %d\nSteps:\n%s",
 		t.SourceLang, t.TargetLang, t.MaxTokens, t.InputTokens, t.ChunksCount, strings.Join(stepsInfo, "\n"))
 }
+
+func EscapeMarkdownV2(text string) string {
+	replacer := strings.NewReplacer(
+		"_", "\\_", "*", "\\*", "[", "\\[", "]", "\\]", "(",
+		"\\(", ")", "\\)", "~", "\\~", "`", "\\`", ">", "\\>",
+		"#", "\\#", "+", "\\+", "-", "\\-", "=", "\\=", "|",
+		"\\|", "{", "\\{", "}", "\\}", ".", "\\.", "!", "\\!",
+	)
+	return replacer.Replace(text)
+}
+
+func EscapeHtml(text string) string {
+	replacer := strings.NewReplacer("<", "&lt;", ">", "&gt;", "&", "&amp;")
+	return replacer.Replace(text)
+}
+
+func Markdown2Html(text string) (string, error) {
+	var buf bytes.Buffer
+	if err := goldmark.Convert([]byte(text), &buf); err != nil {
+		log.Errorf("Error converting markdown:%s", err)
+		return "", &InnerError{
+			ErrType: ExternalServiceError,
+			ErrMsg:  fmt.Sprintf("Error converting markdown:%s", err),
+			Code:    0,
+		}
+	}
+	return buf.String(), nil
+}
+
+// 实现按照一定大小切分
+func SplitBySize(text string, size int) []string {
+	var result []string
+	for i := 0; i < len(text); i += size {
+		end := i + size
+		if end > len(text) {
+			end = len(text)
+		}
+		result = append(result, text[i:end])
+	}
+	return result
+}
+
+// 实现一个基于内存的writeseeker的文件操作
