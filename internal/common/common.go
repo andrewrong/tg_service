@@ -152,4 +152,48 @@ func SplitBySize(text string, size int) []string {
 	return result
 }
 
-// 实现一个基于内存的writeseeker的文件操作
+// MemoryWriteSeeker 是一个基于内存的 WriteSeeker 实现
+type MemoryWriteSeeker struct {
+	buf    *bytes.Buffer
+	offset int64
+}
+
+// NewMemoryWriteSeeker 创建一个新的 MemoryWriteSeeker 实例
+func NewMemoryWriteSeeker() *MemoryWriteSeeker {
+	return &MemoryWriteSeeker{
+		buf: new(bytes.Buffer),
+	}
+}
+
+// Write 实现 io.Writer 接口
+func (mws *MemoryWriteSeeker) Write(p []byte) (n int, err error) {
+	// 先调整缓冲区大小以适应新的写入
+	if mws.offset != int64(mws.buf.Len()) {
+		mws.buf.Bytes() = append(mws.buf.Bytes()[:mws.offset], p...)
+	} else {
+		mws.buf.Write(p)
+	}
+	n, err = len(p), nil
+	mws.offset += int64(n)
+	return
+}
+
+// Seek 实现 io.Seeker 接口
+func (mws *MemoryWriteSeeker) Seek(offset int64, whence int) (int64, error) {
+	var newOffset int64
+	switch whence {
+	case io.SeekStart:
+		newOffset = offset
+	case io.SeekCurrent:
+		newOffset = mws.offset + offset
+	case io.SeekEnd:
+		newOffset = int64(mws.buf.Len()) + offset
+	default:
+		return 0, fmt.Errorf("invalid whence")
+	}
+	if newOffset < 0 {
+		return 0, fmt.Errorf("negative result position")
+	}
+	mws.offset = newOffset
+	return mws.offset, nil
+}
