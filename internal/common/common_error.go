@@ -1,6 +1,8 @@
 package common
 
-import "fmt"
+import (
+	"encoding/json"
+)
 
 type ErrorType string
 
@@ -12,13 +14,14 @@ var (
 )
 
 type InnerError struct {
-	ErrType ErrorType
-	ErrMsg  string
-	Code    int
+	ErrType ErrorType `json:"err_type"`
+	ErrMsg  string    `json:"err_msg"`
+	Code    int       `json:"code"`
 }
 
 func (e *InnerError) Error() string {
-	return fmt.Sprintf("type: %s, msg: %s, code:%d", e.ErrType, e.ErrMsg, e.Code)
+	data, _ := json.Marshal(e)
+	return string(data)
 }
 
 func (e *InnerError) GetCode() int {

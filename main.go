@@ -37,16 +37,47 @@ func main() {
 		BearerToken: os.Getenv("URL2MD_TOKEN"),
 		ServiceUrl:  os.Getenv("URL2MD_SERVICE_URL"),
 	})
-	aiS, _ := service.NewAiService(&service.AiConfig{
+	aiS, err := service.NewAiService(&service.AiConfig{
 		DeepseekConfig: &ai_model.DeepSeekConfig{
 			ApiKey: os.Getenv("DEEPSEEK_TOKEN"),
 		},
-		OpenaiConfig: nil,
+		GroqConfig: &ai_model.GroqConfig{
+			ApiKey: os.Getenv("GROQ_TOKEN"),
+		},
+		OpenaiConfig: &ai_model.OpenAiConfig{
+			ApiKey: os.Getenv("OPENAI_TOKEN"),
+		},
 	})
+	if err != nil {
+		log.Errorf("[main] new ai service error: %s", err.Error())
+		return
+	}
 
-	translateS := ai_app.NewTranslateApp(aiS.GetDeepSeekService(), "deepseek-chat", 8)
+	translateS := ai_app.NewTranslateApp(aiS.GetGroqService(), "llama-3.1-70b-versatile", 6)
 	b.Handle("/ts", func(c tele.Context) error {
 		execute, err := service.NewTSCommand(translateS, url2md, c)
+		if err != nil {
+			c.Send(err.Error())
+			return err
+		}
+		execute.Execute()
+		return nil
+	})
+
+	summary := ai_app.NewArticleSummaryApp(aiS.GetOpenAiService(), "")
+	b.Handle("/summary", func(c tele.Context) error {
+		execute, err := service.NewSummaryCommand(summary, url2md, c)
+		if err != nil {
+			c.Send(err.Error())
+			return err
+		}
+		execute.Execute()
+		return nil
+	})
+
+	voice2TextApp := ai_app.NewVoiceToTextApp(aiS.GetOpenAiService(), "whisper-1")
+	b.Handle(tele.OnVoice, func(c tele.Context) error {
+		execute, err := service.NewVoice2TextCmd(voice2TextApp, c)
 		if err != nil {
 			c.Send(err.Error())
 			return err

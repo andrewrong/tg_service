@@ -35,7 +35,7 @@ func (rd *Url2MdConfig) Check() error {
 		}
 	}
 	if rd.TimeoutMs <= 0 {
-		rd.TimeoutMs = 30 * 1000
+		rd.TimeoutMs = 60 * 1000
 	}
 	return nil
 }
@@ -61,7 +61,7 @@ func NewUrl2MdService(config *Url2MdConfig) (*Url2MdService, error) {
 
 	tr := &http.Transport{
 		MaxIdleConns:       10,
-		IdleConnTimeout:    30 * time.Second,
+		IdleConnTimeout:    60 * time.Second,
 		DisableCompression: true,
 	}
 

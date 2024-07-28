@@ -2,8 +2,7 @@ package ai_model
 
 import (
 	"context"
-
-	openai "github.com/sashabaranov/go-openai"
+	"io"
 
 	"tg_ai_service/internal/common"
 	"tg_ai_service/internal/log"
@@ -26,7 +25,7 @@ func (rd *OpenAiConfig) Check() error {
 
 type OpenAIService struct {
 	config *OpenAiConfig
-	client *openai.Client
+	client *CompatibleOpenAIService
 }
 
 func NewOpenAIService(config *OpenAiConfig) (*OpenAIService, error) {
@@ -43,44 +42,32 @@ func NewOpenAIService(config *OpenAiConfig) (*OpenAIService, error) {
 		return nil, err
 	}
 
+	tmpC, err := NewCompatibleOpenAIService(&CompatibleOpenAIConfig{
+		ApiKey:  config.ApiKey,
+		AiTy:    common.OpenAI,
+		BaseUrl: "https://api.openai.com/v1",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	log.Infof("[%s] init success", tmpC.GetType())
 	return &OpenAIService{
 		config: config,
-		client: openai.NewClient(config.ApiKey),
+		client: tmpC,
 	}, nil
 }
 
 func (s *OpenAIService) GetCompletion(prompt, systemMessage, model string, temperature float32, jsonModel bool, ctx context.Context) (string, error) {
-	req := openai.ChatCompletionRequest{
-		Model:       model,
-		Temperature: temperature,
-		TopP:        1,
-		Messages: []openai.ChatCompletionMessage{
-			{
-				Role:    "system",
-				Content: systemMessage,
-			},
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-	}
+	return s.client.GetCompletion(prompt, systemMessage, model, temperature, jsonModel, ctx)
+}
 
-	if jsonModel {
-		req.ResponseFormat = &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-		}
+func (s *OpenAIService) GetTranscription(prompt string, reader io.Reader, model string, temperature float32, format common.TranscriptionFormat, ctx context.Context) (string, error) {
+	if prompt == "" {
+		prompt = "生于忧患，死于欢乐。不亦快哉！"
 	}
-
-	resp, err := s.client.CreateChatCompletion(ctx, req)
-	if err != nil {
-		log.Errorf("get openai is error:%s", err)
-		return "", &common.InnerError{
-			ErrType: common.ExternalServiceError,
-			ErrMsg:  "get openai is error",
-			Code:    0,
-		}
+	if model == "" {
+		model = "whisper-1"
 	}
-
-	return resp.Choices[0].Message.Content, nil
+	return s.client.GetTranscription(prompt, reader, model, temperature, format, ctx)
 }

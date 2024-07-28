@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/tmc/langchaingo/textsplitter"
@@ -30,20 +31,34 @@ func NewTranslateApp(ai common.AI, defaultModel string, chunksInContext int) *Tr
 	}
 }
 
-func (t *TranslateApp) oneChunkInitialTranslation(sourceLang, targetLang, sourceText string, ctx context.Context) (string, error) {
+func (t *TranslateApp) oneChunkInitialTranslation(sourceLang, targetLang, sourceText string, stepRecord *common.TranslateStepRecord, ctx context.Context) (translation string, err error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation from %s to %s.", sourceLang, targetLang)
 
 	translationPrompt := fmt.Sprintf("This is an %s to %s translation, please provide the %s translation for this text. Do not provide any explanations or text apart from the translation.\n%s: %s\n\n%s:", sourceLang, targetLang, targetLang, sourceLang, sourceText, targetLang)
 
-	translation, err := t.ai.GetCompletion(translationPrompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+	start := time.Now()
+	defer func() {
+		if err == nil {
+			inputToken, _ := numTokensInString(translationPrompt, "cl100k_base")
+			oneStep := &common.OneAiRecord{
+				Cost:       time.Since(start).Milliseconds(),
+				InputToken: inputToken,
+			}
+			oneStep.OutputToken, _ = numTokensInString(translation, "cl100k_base")
+			stepRecord.Records = append(stepRecord.Records, oneStep)
+			return
+		}
+		log.Errorf("oneChunkInitialTranslation error: %v", err)
+	}()
+
+	translation, err = t.ai.GetCompletion(translationPrompt, systemMessage, t.defaultModel, 0.3, false, ctx)
 	if err != nil {
 		return "", err
 	}
-
 	return translation, nil
 }
 
-func (t *TranslateApp) oneChunkReflectOnTranslation(sourceLang, targetLang, sourceText, translation1, country string, ctx context.Context) (string, error) {
+func (t *TranslateApp) oneChunkReflectOnTranslation(sourceLang, targetLang, sourceText, translation1, country string, stepRecord *common.TranslateStepRecord, ctx context.Context) (reflection string, err error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist specializing in translation from %s to %s. You will be provided with a source text and its translation and your goal is to improve the translation.", sourceLang, targetLang)
 
 	var reflectionPrompt string
@@ -70,7 +85,23 @@ func (t *TranslateApp) oneChunkReflectOnTranslation(sourceLang, targetLang, sour
 			targetLang, sourceText, translation1, targetLang, targetLang)
 	}
 
-	reflection, err := t.ai.GetCompletion(reflectionPrompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+	start := time.Now()
+	defer func() {
+		if err != nil {
+			log.Errorf("oneChunkReflectOnTranslation error: %v", err)
+			return
+		}
+
+		inputToken, _ := numTokensInString(reflectionPrompt, "cl100k_base")
+		oneStep := &common.OneAiRecord{
+			Cost:       time.Since(start).Milliseconds(),
+			InputToken: inputToken,
+		}
+		oneStep.OutputToken, _ = numTokensInString(reflection, "cl100k_base")
+		stepRecord.Records = append(stepRecord.Records, oneStep)
+	}()
+
+	reflection, err = t.ai.GetCompletion(reflectionPrompt, systemMessage, t.defaultModel, 0.3, false, ctx)
 	if err != nil {
 		return "", err
 	}
@@ -78,7 +109,7 @@ func (t *TranslateApp) oneChunkReflectOnTranslation(sourceLang, targetLang, sour
 	return reflection, nil
 }
 
-func (t *TranslateApp) oneChunkImproveTranslation(sourceLang, targetLang, sourceText, translation1, reflection string, ctx context.Context) (string, error) {
+func (t *TranslateApp) oneChunkImproveTranslation(sourceLang, targetLang, sourceText, translation1, reflection string, stepRecord *common.TranslateStepRecord, ctx context.Context) (translation2 string, err error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation editing from %s to %s.", sourceLang, targetLang)
 
 	prompt := fmt.Sprintf(`Your task is to carefully read, then edit, a translation from %s to %s, taking into account a list of expert suggestions and
@@ -90,7 +121,23 @@ follows:\n\n<SOURCE_TEXT>\n%s\n</SOURCE_TEXT>\n\n<TRANSLATION>\n%s\n</TRANSLATIO
 	repetitions), (iii) style (by ensuring the translations reflect the style of the source text) (iv) terminology (inappropriate for context, inconsistent use)
 	or (v) other errors.\n\nOutput only the new translation and nothing else.`, sourceLang, targetLang, sourceText, translation1, reflection, targetLang)
 
-	translation2, err := t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+	start := time.Now()
+	defer func() {
+		if err != nil {
+			log.Errorf("oneChunkImproveTranslation error: %v", err)
+			return
+		}
+
+		inputToken, _ := numTokensInString(prompt, "cl100k_base")
+		oneStep := &common.OneAiRecord{
+			Cost:       time.Since(start).Milliseconds(),
+			InputToken: inputToken,
+		}
+		oneStep.OutputToken, _ = numTokensInString(translation2, "cl100k_base")
+		stepRecord.Records = append(stepRecord.Records, oneStep)
+	}()
+
+	translation2, err = t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
 	if err != nil {
 		return "", err
 	}
@@ -98,21 +145,90 @@ follows:\n\n<SOURCE_TEXT>\n%s\n</SOURCE_TEXT>\n\n<TRANSLATION>\n%s\n</TRANSLATIO
 	return translation2, nil
 }
 
-func (t *TranslateApp) oneChunkTranslateText(sourceLang, targetLang, sourceText, country string, ctx context.Context) (string, error) {
+func (t *TranslateApp) oneChunkTranslateText(sourceLang, targetLang, sourceText, country string, record *common.TranslateRecord, ctx context.Context) (string, error) {
 	log.Infof("[single step1] start chunk initial translation for %s to %s", sourceLang, targetLang)
-	translation1, err := t.oneChunkInitialTranslation(sourceLang, targetLang, sourceText, ctx)
+	translation1, err := func() (string, error) {
+		start := time.Now()
+		translation1 := ""
+		var err error = nil
+
+		step1 := &common.TranslateStepRecord{
+			StepName: "simple_step_1",
+			SumCost:  0,
+			Records:  make([]*common.OneAiRecord, 0),
+		}
+
+		defer func() {
+			if err != nil {
+				return
+			}
+			step1.SumCost = time.Since(start).Milliseconds()
+			record.Steps = append(record.Steps, step1)
+		}()
+		translation1, err = t.oneChunkInitialTranslation(sourceLang, targetLang, sourceText, step1, ctx)
+		if err != nil {
+			return "", err
+		}
+
+		return translation1, nil
+	}()
+
 	if err != nil {
 		return "", err
 	}
 
-	log.Infof("[single step2] reflect translation for %s to %s", sourceLang, targetLang)
-	reflection, err := t.oneChunkReflectOnTranslation(sourceLang, targetLang, sourceText, translation1, country, ctx)
+	log.Infof("[single step2] start chunk reflect on translation for %s to %s", sourceLang, targetLang)
+	reflection, err := func() (string, error) {
+		start := time.Now()
+		reflection := ""
+		var err error = nil
+		step2 := &common.TranslateStepRecord{
+			StepName: "simple_step_2",
+			SumCost:  0,
+			Records:  make([]*common.OneAiRecord, 0),
+		}
+		defer func() {
+			if err != nil {
+				return
+			}
+			step2.SumCost = time.Since(start).Milliseconds()
+			record.Steps = append(record.Steps, step2)
+		}()
+
+		reflection, err = t.oneChunkReflectOnTranslation(sourceLang, targetLang, sourceText, translation1, country, step2, ctx)
+		if err != nil {
+			return "", err
+		}
+		return reflection, nil
+	}()
+
 	if err != nil {
 		return "", err
 	}
 
-	log.Infof("[single step3] improve translation for %s to %s", sourceLang, targetLang)
-	translation2, err := t.oneChunkImproveTranslation(sourceLang, targetLang, sourceText, translation1, reflection, ctx)
+	log.Infof("[single step3] start chunk improve translation for %s to %s", sourceLang, targetLang)
+	translation2, err := func() (string, error) {
+		start := time.Now()
+		translation2 := ""
+		var err error = nil
+		step3 := &common.TranslateStepRecord{
+			StepName: "simple_step_3",
+			SumCost:  0,
+			Records:  make([]*common.OneAiRecord, 0),
+		}
+		defer func() {
+			if err != nil {
+				return
+			}
+			step3.SumCost = time.Since(start).Milliseconds()
+			record.Steps = append(record.Steps, step3)
+		}()
+		translation2, err = t.oneChunkImproveTranslation(sourceLang, targetLang, sourceText, translation1, reflection, step3, ctx)
+		if err != nil {
+			return "", err
+		}
+		return translation2, nil
+	}()
 	if err != nil {
 		return "", err
 	}
@@ -165,17 +281,28 @@ func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country str
 		return "", err
 	}
 
+	translateRecord := &common.TranslateRecord{
+		MaxTokens:   maxTokens,
+		InputTokens: numTokensInText,
+		Steps:       make([]*common.TranslateStepRecord, 0),
+		SourceLang:  sourceLang,
+		TargetLang:  targetLang,
+	}
+
 	if numTokensInText <= maxTokens {
-		log.Infof("Translating text as a single chunk")
-		finalTranslation, err := t.oneChunkTranslateText(sourceLang, targetLang, sourceText, country, ctx)
+		log.Infof("Translating text as a single chunk, tokens:%d", numTokensInText)
+		translateRecord.ChunksCount = 1
+		finalTranslation, err := t.oneChunkTranslateText(sourceLang, targetLang, sourceText, country, translateRecord, ctx)
 		if err != nil {
 			return "", err
 		}
+
+		log.Infof("%s", translateRecord.String())
 		return finalTranslation, nil
 	} else {
-		log.Info("Translating text as multiple chunks")
-
 		tokenSize := calculateChunkSize(numTokensInText, maxTokens)
+		log.Infof("Translating text as multiple chunks, tokens:%d, chunk token:%d", numTokensInText, tokenSize)
+		translateRecord.ChunkTokens = tokenSize
 
 		textSplitter := textsplitter.NewRecursiveCharacter(textsplitter.WithChunkSize(tokenSize), textsplitter.WithChunkOverlap(0), textsplitter.WithModelName(t.defaultModel))
 		sourceTextChunks, err := textSplitter.SplitText(sourceText)
@@ -187,10 +314,10 @@ func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country str
 				Code:    0,
 			}
 		}
+		translateRecord.ChunksCount = len(sourceTextChunks)
+		log.Infof("MultiTranslation chunks: %v", len(sourceTextChunks))
 
-		log.Infof("Translation chunks: %v", len(sourceTextChunks))
-
-		translation2Chunks, err := t.MultiChunkTranslation(sourceLang, targetLang, sourceTextChunks, country, ctx)
+		translation2Chunks, err := t.MultiChunkTranslation(sourceLang, targetLang, sourceTextChunks, country, translateRecord, ctx)
 		if err != nil {
 			return "", &common.InnerError{
 				ErrType: common.ExternalServiceError,
@@ -199,11 +326,12 @@ func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country str
 			}
 		}
 
+		log.Infof("%s", translateRecord.String())
 		return strings.Join(translation2Chunks, ""), nil
 	}
 }
 
-func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang string, sourceTextChunks []string, ctx context.Context) ([]string, error) {
+func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang string, sourceTextChunks []string, record *common.TranslateStepRecord, ctx context.Context) ([]string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation from %s to %s.", sourceLang, targetLang)
 	translationPrompt := `Your task is to provide a professional translation from %s to %s of PART of a text.
 
@@ -224,29 +352,50 @@ func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang strin
 
 	translationChunks := make([]string, 0)
 	for i := range sourceTextChunks {
-		startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
-		taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
-			strings.Join(sourceTextChunks[i+1:endIdx], "")
-		prompt := fmt.Sprintf(translationPrompt, sourceLang, targetLang, taggedText, sourceTextChunks[i])
-		translation, err := t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+		translation, err := func(idx int) (string, error) {
+			start := time.Now()
+			startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
+			taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
+				strings.Join(sourceTextChunks[i+1:endIdx], "")
+			prompt := fmt.Sprintf(translationPrompt, sourceLang, targetLang, taggedText, sourceTextChunks[i])
+			var err error = nil
+			translation := ""
+
+			defer func() {
+				if err != nil {
+					log.Errorf("[multi init chunk:%d]run ai serive is error:%s", idx, err)
+					return
+				}
+				inputToken, _ := numTokensInString(prompt, "cl100k_base")
+				oneStep := &common.OneAiRecord{
+					Cost:       time.Since(start).Milliseconds(),
+					InputToken: inputToken,
+				}
+				oneStep.OutputToken, _ = numTokensInString(translation, "cl100k_base")
+				record.Records = append(record.Records, oneStep)
+			}()
+
+			translation, err = t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+			if err != nil {
+				log.Errorf("run ai service is error:%s", err)
+				return "", &common.InnerError{
+					ErrType: common.ExternalServiceError,
+					ErrMsg:  err.Error(),
+					Code:    0,
+				}
+			}
+			return translation, nil
+		}(i)
 
 		if err != nil {
-			log.Errorf("run ai service is error:%s", err)
-			return nil, &common.InnerError{
-				ErrType: common.ExternalServiceError,
-				ErrMsg:  err.Error(),
-				Code:    0,
-			}
+			return nil, err
 		}
 		translationChunks = append(translationChunks, translation)
 	}
-
-	log.Infof("Translation completed, total %d chunks", len(translationChunks))
-
 	return translationChunks, nil
 }
 
-func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks []string, country string, ctx context.Context) ([]string, error) {
+func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks []string, country string, record *common.TranslateStepRecord, ctx context.Context) ([]string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist specializing in translation from %s to %s. You will be provided with a source text and its translation and your goal is to improve the translation.", sourceLang, targetLang)
 
 	var reflectionPrompt string
@@ -317,36 +466,45 @@ func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang str
 
 	reflectionChunks := make([]string, 0)
 	for i := range sourceTextChunks {
-		startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
-		taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
-			strings.Join(sourceTextChunks[i+1:endIdx], "")
-		reflection := ""
-		var err error = nil
-		if country != "" {
-			prompt := fmt.Sprintf(reflectionPrompt, sourceLang, targetLang, targetLang, country, taggedText, sourceTextChunks[i], translation1Chunks[i],
-				targetLang, targetLang)
-			reflection, err = t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
-			reflectionChunks = append(reflectionChunks, reflection)
-		} else {
+		reflection, err := func(idx int) (string, error) {
+			startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
+			taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
+				strings.Join(sourceTextChunks[i+1:endIdx], "")
+			reflection := ""
 			prompt := fmt.Sprintf(reflectionPrompt, sourceLang, targetLang, taggedText, sourceTextChunks[i], translation1Chunks[i], targetLang, targetLang)
-			reflection, err = t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
-			reflectionChunks = append(reflectionChunks, reflection)
-		}
-
-		if err != nil {
-			log.Errorf("run ai serive is error:%s", err)
-			return nil, &common.InnerError{
-				ErrType: common.ExternalServiceError,
-				ErrMsg:  err.Error(),
-				Code:    0,
+			var err error = nil
+			if country != "" {
+				prompt = fmt.Sprintf(reflectionPrompt, sourceLang, targetLang, targetLang, country, taggedText, sourceTextChunks[i], translation1Chunks[i],
+					targetLang, targetLang)
 			}
+			start := time.Now()
+			defer func() {
+				if err != nil {
+					log.Errorf("[multi refection chunk:%d]run ai serive is error:%s", idx, err)
+					return
+				}
+				inputToken, _ := numTokensInString(prompt, "cl100k_base")
+				oneStep := &common.OneAiRecord{
+					Cost:       time.Since(start).Milliseconds(),
+					InputToken: inputToken,
+				}
+				oneStep.OutputToken, _ = numTokensInString(reflection, "cl100k_base")
+				record.Records = append(record.Records, oneStep)
+			}()
+
+			reflection, err = t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+			return reflection, err
+		}(i)
+		if err != nil {
+			return nil, err
 		}
+		reflectionChunks = append(reflectionChunks, reflection)
 	}
 
 	return reflectionChunks, nil
 }
 
-func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks, reflectionChunks []string, ctx context.Context) ([]string, error) {
+func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang string, sourceTextChunks, translation1Chunks, reflectionChunks []string, record *common.TranslateStepRecord, ctx context.Context) ([]string, error) {
 	systemMessage := fmt.Sprintf("You are an expert linguist, specializing in translation editing from %s to %s.", sourceLang, targetLang)
 
 	improvementPrompt := `Your task is to carefully read, then improve, a translation from %s to %s, taking into
@@ -386,44 +544,120 @@ func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang strin
 
  Output only the new translation of the indicated part and nothing else.`
 
-	translation2Chunks := []string{}
+	translation2Chunks := make([]string, 0)
 	for i := range sourceTextChunks {
-		startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
-		log.Infof("context start,end [%d, %d]", startIdx, endIdx)
-		taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
-			strings.Join(sourceTextChunks[i+1:endIdx], "")
-		prompt := fmt.Sprintf(improvementPrompt, sourceLang, targetLang, taggedText, sourceTextChunks[i], translation1Chunks[i], reflectionChunks[i],
-			targetLang)
-		translation2, err := t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+		translation2, err := func(idx int) (string, error) {
+			startIdx, endIdx := t.getContextBoundary(i, len(sourceTextChunks))
+			taggedText := strings.Join(sourceTextChunks[startIdx:i], "") + "<TRANSLATE_THIS>" + sourceTextChunks[i] + "</TRANSLATE_THIS>" +
+				strings.Join(sourceTextChunks[i+1:endIdx], "")
+			prompt := fmt.Sprintf(improvementPrompt, sourceLang, targetLang, taggedText, sourceTextChunks[i], translation1Chunks[i], reflectionChunks[i],
+				targetLang)
+			translation2 := ""
+			var err error = nil
+			start := time.Now()
+
+			defer func() {
+				if err != nil {
+					log.Errorf("[multi improvement chunk:%d]run ai serive is error:%s", idx, err)
+					return
+				}
+				inputToken, _ := numTokensInString(prompt, "cl100k_base")
+				oneStep := &common.OneAiRecord{
+					Cost:       time.Since(start).Milliseconds(),
+					InputToken: inputToken,
+				}
+				oneStep.OutputToken, _ = numTokensInString(translation2, "cl100k_base")
+				record.Records = append(record.Records, oneStep)
+			}()
+			translation2, err = t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
+
+			if err != nil {
+				return "", err
+			}
+			return translation2, nil
+		}(i)
 
 		if err != nil {
-			log.Errorf("run ai serive is error:%s", err)
-			return nil, &common.InnerError{
-				ErrType: common.ExternalServiceError,
-				ErrMsg:  err.Error(),
-				Code:    0,
-			}
+			return nil, err
 		}
-
 		translation2Chunks = append(translation2Chunks, translation2)
 	}
 
 	return translation2Chunks, nil
-
 }
 
-func (t *TranslateApp) MultiChunkTranslation(sourceLang, targetLang string, sourceTextChunks []string, country string, ctx context.Context) ([]string, error) {
-	translation1Chunks, err := t.multiChunkInitialTranslation(sourceLang, targetLang, sourceTextChunks, ctx)
+func (t *TranslateApp) MultiChunkTranslation(sourceLang, targetLang string, sourceTextChunks []string, country string, record *common.TranslateRecord, ctx context.Context) ([]string, error) {
+
+	translation1Chunks, err := func() ([]string, error) {
+		translation1Chunks := make([]string, 0)
+		var err error = nil
+		start := time.Now()
+
+		step1 := &common.TranslateStepRecord{
+			StepName: "multi_step_1",
+			SumCost:  0,
+			Records:  []*common.OneAiRecord{},
+		}
+
+		defer func() {
+			if err != nil {
+				return
+			}
+			step1.SumCost = time.Since(start).Milliseconds()
+			record.Steps = append(record.Steps, step1)
+		}()
+
+		translation1Chunks, err = t.multiChunkInitialTranslation(sourceLang, targetLang, sourceTextChunks, step1, ctx)
+		return translation1Chunks, err
+	}()
 	if err != nil {
 		return nil, err
 	}
 
-	reflectionChunks, err := t.multiChunkReflectOnTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, country, ctx)
+	reflectionChunks, err := func() ([]string, error) {
+		reflectionChunks := make([]string, 0)
+		var err error = nil
+		start := time.Now()
+
+		step2 := &common.TranslateStepRecord{
+			StepName: "multi_step_2",
+			SumCost:  0,
+			Records:  []*common.OneAiRecord{},
+		}
+		defer func() {
+			if err != nil {
+				return
+			}
+			step2.SumCost = time.Since(start).Milliseconds()
+			record.Steps = append(record.Steps, step2)
+		}()
+		reflectionChunks, err = t.multiChunkReflectOnTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, country, step2, ctx)
+		return reflectionChunks, err
+	}()
 	if err != nil {
 		return nil, err
 	}
 
-	translation2Chunks, err := t.multiChunkImproveTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, reflectionChunks, ctx)
+	translation2Chunks, err := func() ([]string, error) {
+		translation2Chunks := make([]string, 0)
+		var err error = nil
+		start := time.Now()
+
+		step3 := &common.TranslateStepRecord{
+			StepName: "multi_step_3",
+			SumCost:  0,
+			Records:  []*common.OneAiRecord{},
+		}
+		defer func() {
+			if err != nil {
+				return
+			}
+			step3.SumCost = time.Since(start).Milliseconds()
+			record.Steps = append(record.Steps, step3)
+		}()
+		translation2Chunks, err = t.multiChunkImproveTranslation(sourceLang, targetLang, sourceTextChunks, translation1Chunks, reflectionChunks, step3, ctx)
+		return translation2Chunks, err
+	}()
 	if err != nil {
 		return nil, err
 	}

@@ -8,12 +8,12 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type DeepSeekConfig struct {
+type GroqConfig struct {
 	ApiKey  string `json:"api_key"`
 	BaseUrl string `json:"base_url"`
 }
 
-func (rd *DeepSeekConfig) Check() error {
+func (rd *GroqConfig) Check() error {
 	if rd.ApiKey == "" {
 		return &common.InnerError{
 			ErrType: common.ParameterError,
@@ -23,17 +23,17 @@ func (rd *DeepSeekConfig) Check() error {
 	}
 
 	if rd.BaseUrl == "" {
-		rd.BaseUrl = "https://api.deepseek.com/v1"
+		rd.BaseUrl = "https://api.groq.com/openai/v1"
 	}
 	return nil
 }
 
-type DeepSeekService struct {
-	config *DeepSeekConfig
+type GroqService struct {
+	config *GroqConfig
 	client *CompatibleOpenAIService
 }
 
-func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
+func NewGroqService(config *GroqConfig) (*GroqService, error) {
 	if config == nil {
 		return nil, &common.InnerError{
 			ErrType: common.ParameterError,
@@ -50,28 +50,30 @@ func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
 	tmpC, err := NewCompatibleOpenAIService(&CompatibleOpenAIConfig{
 		ApiKey:  config.ApiKey,
 		BaseUrl: config.BaseUrl,
-		AiTy:    common.DeepSeek,
+		AiTy:    common.Groq,
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
 	log.Infof("[%s] init success", tmpC.GetType())
-	return &DeepSeekService{
+	return &GroqService{
 		config: config,
 		client: tmpC,
 	}, nil
 }
 
-func (s *DeepSeekService) GetCompletion(prompt, systemMessage, model string, temperature float32, jsonModel bool, ctx context.Context) (string, error) {
+func (s *GroqService) GetCompletion(prompt, systemMessage, model string, temperature float32, jsonModel bool, ctx context.Context) (string, error) {
 	return s.client.GetCompletion(prompt, systemMessage, model, temperature, jsonModel, ctx)
 }
 
-func (s *DeepSeekService) GetTranscription(prompt string, reader io.Reader, mode string, temperature float32, format common.TranscriptionFormat, ctx context.Context) (string, error) {
-	return "", &common.InnerError{
-		ErrType: common.ParameterError,
-		ErrMsg:  "deepseek not support transcription",
-		Code:    0,
+func (s *GroqService) GetTranscription(prompt string, reader io.Reader, mode string, temperature float32, format common.TranscriptionFormat, ctx context.Context) (string, error) {
+	if prompt == "" {
+		prompt = "生于忧患，死于欢乐。不亦快哉！"
 	}
+
+	if mode == "" {
+		mode = "whisper-large-v3"
+	}
+	return s.client.GetTranscription(prompt, reader, mode, temperature, format, ctx)
 }

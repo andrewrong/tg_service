@@ -8,6 +8,7 @@ import (
 type AiConfig struct {
 	OpenaiConfig   *ai_model.OpenAiConfig   `json:"openai_config"`
 	DeepseekConfig *ai_model.DeepSeekConfig `json:"deepseek_config"`
+	GroqConfig     *ai_model.GroqConfig     `json:"groq_config"`
 }
 
 func (rd *AiConfig) Check() error {
@@ -29,6 +30,14 @@ func (rd *AiConfig) Check() error {
 		valid = true
 	}
 
+	if rd.GroqConfig != nil {
+		err := rd.GroqConfig.Check()
+		if err != nil {
+			return err
+		}
+		valid = true
+	}
+
 	if !valid {
 		return &common.InnerError{
 			ErrType: common.ParameterError,
@@ -44,6 +53,7 @@ type AiService struct {
 	config *AiConfig
 	openai *ai_model.OpenAIService
 	deep   *ai_model.DeepSeekService
+	groq   *ai_model.GroqService
 }
 
 func NewAiService(config *AiConfig) (*AiService, error) {
@@ -78,6 +88,14 @@ func NewAiService(config *AiConfig) (*AiService, error) {
 		}
 		s.deep = tmp
 	}
+
+	if config.GroqConfig != nil {
+		tmp, err := ai_model.NewGroqService(config.GroqConfig)
+		if err != nil {
+			return nil, err
+		}
+		s.groq = tmp
+	}
 	return s, nil
 }
 
@@ -87,4 +105,8 @@ func (s *AiService) GetOpenAiService() common.AI {
 
 func (s *AiService) GetDeepSeekService() common.AI {
 	return s.deep
+}
+
+func (s *AiService) GetGroqService() common.AI {
+	return s.groq
 }

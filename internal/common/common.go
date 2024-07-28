@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/url"
+	"os"
 	"strings"
 
+	"github.com/h2non/filetype"
 	"github.com/yuin/goldmark"
 
 	"tg_ai_service/internal/log"
@@ -186,15 +189,14 @@ func (mws *MemoryWriteSeeker) Write(p []byte) (n int, err error) {
 
 // Read 实现 io.Reader 接口
 func (mws *MemoryWriteSeeker) Read(p []byte) (n int, err error) {
-	n, err = mws.buf.ReadAt(p, mws.offset)
+	n, err = mws.buf.Read(p)
 	if err == io.EOF {
 		return n, nil
 	}
 	if err != nil {
 		return 0, err
 	}
-	mws.offset += int64(n)
-	return n, nil
+	return
 }
 
 // Seek 实现 io.Seeker 接口
@@ -215,4 +217,41 @@ func (mws *MemoryWriteSeeker) Seek(offset int64, whence int) (int64, error) {
 	}
 	mws.offset = newOffset
 	return mws.offset, nil
+}
+
+const (
+	TMP_AUDIO_PATH = "/tmp/audio/"
+)
+
+func init() {
+	_ = os.MkdirAll(TMP_AUDIO_PATH, os.ModePerm)
+}
+
+func GetFileType(filePath string) (string, error) {
+	buf, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		log.Errorf("Error reading file:%s", err)
+		return "", err
+	}
+
+	kind, _ := filetype.Match(buf)
+	if kind == filetype.Unknown {
+		fmt.Println("Unknown file type.")
+	} else {
+		fmt.Printf("File type: %s. MIME: %s\n", kind.Extension, kind.MIME.Value)
+	}
+	return kind.Extension, nil
+}
+
+type NameReader struct {
+	Reader   io.Reader
+	FilePath string
+}
+
+func (r *NameReader) Read(p []byte) (n int, err error) {
+	return r.Reader.Read(p)
+}
+
+func (r *NameReader) Name() string {
+	return r.FilePath
 }
