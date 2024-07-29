@@ -54,11 +54,7 @@ type AiService struct {
 
 func NewAiService(config *AiConfig) (*AiService, error) {
 	if config == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "config is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
 
 	err := config.Check()

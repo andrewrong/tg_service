@@ -32,11 +32,7 @@ type DeepSeekService struct {
 
 func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
 	if config == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "config is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
 
 	err := config.Check()
@@ -59,11 +55,7 @@ func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
 	}
 
 	if len(models) == 0 {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "no support model",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "no support model")
 	}
 
 	log.Infof("[%s] init success", tmpC.GetType())

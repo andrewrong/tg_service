@@ -40,11 +40,7 @@ type CompatibleOpenAIService struct {
 func NewCompatibleOpenAIService(config *CompatibleOpenAIConfig) (*CompatibleOpenAIService, error) {
 	if config == nil {
 		log.Errorf("CompatibleOpenAIConfig is empty")
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "config is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
 
 	err := config.Check()
@@ -88,11 +84,7 @@ func (s *CompatibleOpenAIService) GetCompletion(prompt, systemMessage, model str
 	resp, err := s.client.CreateChatCompletion(ctx, req)
 	if err != nil {
 		log.Errorf("get openai is error:%s", err)
-		return "", &common.InnerError{
-			ErrType: common.ExternalServiceError,
-			ErrMsg:  "get openai is error",
-			Code:    0,
-		}
+		return "", common.NewInnerErrorWithoutCode(common.ExternalServiceError, "get openai is error")
 	}
 
 	return resp.Choices[0].Message.Content, nil
@@ -119,11 +111,7 @@ func (s *CompatibleOpenAIService) GetTranscription(prompt string, reader io.Read
 	resp, err := s.client.CreateTranscription(ctx, req)
 	if err != nil {
 		log.Errorf("[CreateTranscription] get openai is error:%s", err)
-		return "", &common.InnerError{
-			ErrType: common.ExternalServiceError,
-			ErrMsg:  fmt.Sprintf("get openai is error:%s", err),
-			Code:    0,
-		}
+		return "", common.NewInnerErrorWithoutCode(common.ExternalServiceError, fmt.Sprintf("get openai is error:%s", err))
 	}
 	return resp.Text, nil
 }

@@ -32,11 +32,7 @@ type MoonShotService struct {
 
 func NewMoonShotService(config *MoonShotConfig) (*MoonShotService, error) {
 	if config == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "config is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
 
 	err := config.Check()
@@ -70,11 +66,7 @@ func (s *MoonShotService) GetCompletion(prompt, systemMessage, model string, tem
 }
 
 func (s *MoonShotService) GetTranscription(prompt string, reader io.Reader, mode string, temperature float32, format common.TranscriptionFormat, ctx context.Context) (string, error) {
-	return "", &common.InnerError{
-		ErrType: common.ParameterError,
-		ErrMsg:  "moonshot not support transcription",
-		Code:    0,
-	}
+	return "", common.NewInnerErrorWithoutCode(common.ParameterError, "moonshot not support transcription")
 }
 
 func (s *MoonShotService) GetSupportModels() []string {
