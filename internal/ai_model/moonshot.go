@@ -31,6 +31,7 @@ func (rd *MoonShotConfig) Check() error {
 type MoonShotService struct {
 	config *MoonShotConfig
 	client *CompatibleOpenAIService
+	models []string
 }
 
 func NewMoonShotService(config *MoonShotConfig) (*MoonShotService, error) {
@@ -56,10 +57,15 @@ func NewMoonShotService(config *MoonShotConfig) (*MoonShotService, error) {
 		return nil, err
 	}
 
+	models, err := tmpC.GetSupportModels(context.Background())
+	if err != nil {
+		return nil, err
+	}
 	log.Infof("[%s] init success", tmpC.GetType())
 	return &MoonShotService{
 		config: config,
 		client: tmpC,
+		models: models,
 	}, nil
 }
 
@@ -73,4 +79,8 @@ func (s *MoonShotService) GetTranscription(prompt string, reader io.Reader, mode
 		ErrMsg:  "moonshot not support transcription",
 		Code:    0,
 	}
+}
+
+func (s *MoonShotService) GetSupportModels() []string {
+	return s.models
 }

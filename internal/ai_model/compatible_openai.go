@@ -26,35 +26,12 @@ func (rd *CompatibleOpenAIConfig) Check() error {
 		}
 	}
 
-	if rd.AiTy == "" {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "ai type is empty",
-			Code:    0,
-		}
-	}
-
-	typeValid := false
-	for _, v := range common.AiTypes {
-		if v == rd.AiTy {
-			typeValid = true
-			break
-		}
-	}
-	if !typeValid {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  fmt.Sprintf("ai type is invalid, type: %s", rd.AiTy),
-			Code:    0,
-		}
+	if err := rd.AiTy.Check(); err != nil {
+		return err
 	}
 
 	if rd.BaseUrl == "" && rd.AiTy != common.OpenAI {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "base url is empty",
-			Code:    0,
-		}
+		return common.NewInnerErrorWithoutCode(common.ParameterError, "base url is empty")
 	}
 	return nil
 }
@@ -140,38 +117,30 @@ func (s *CompatibleOpenAIService) GetTranscription(prompt string, reader io.Read
 		Prompt:      prompt,
 		Format:      openai.AudioResponseFormat(format),
 		Reader:      reader,
-	}
-
-	switch reader.(type) {
-	case *common.NameReader:
-		{
-			req.FilePath = reader.(*common.NameReader).FilePath
-		}
-	default:
-		{
-			log.Infof("reader is not NameReader")
-		}
+		FilePath:    "tmp.ogg", //主要用reader，这个参数只是为了不报错
 	}
 
 	resp, err := s.client.CreateTranscription(ctx, req)
 	if err != nil {
-		log.Errorf("get openai is error:%s", err)
+		log.Errorf("[CreateTranscription] get openai is error:%s", err)
 		return "", &common.InnerError{
 			ErrType: common.ExternalServiceError,
 			ErrMsg:  fmt.Sprintf("get openai is error:%s", err),
 			Code:    0,
 		}
 	}
-	systemPrompt := "you are an expert in text proofreading and editing, capable of efficiently identifying and correcting typos, checking punctuation marks, and segmenting text. Additionally, I can make semantic modifications based on context to ensure the overall accuracy and fluency of the text."
-	result, err := s.GetCompletion(resp.Text, systemPrompt, "gpt-4o-mini", 0.3, false, ctx)
-	if err != nil {
-		log.Errorf("get openai is error:%s", err)
-		return resp.Text, nil
-	}
-
-	return result, nil
+	return resp.Text, nil
 }
 
-func (s *CompatibleOpenAIService) GetTranscriptionStream(prompt string, reader io.Reader, mode string, temperature float32, format common.TranscriptionFormat, ctx context.Context) (string, error) {
-	return "", nil
+func (s *CompatibleOpenAIService) GetSupportModels(ctx context.Context) ([]string, error) {
+	models, err := s.client.ListModels(ctx)
+	if err != nil {
+		log.Errorf("ai get support models is error:%s", err.Error())
+		return nil, err
+	}
+	result := make([]string, 0)
+	for _, m := range models.Models {
+		result = append(result, m.ID)
+	}
+	return result, nil
 }

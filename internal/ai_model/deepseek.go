@@ -31,6 +31,7 @@ func (rd *DeepSeekConfig) Check() error {
 type DeepSeekService struct {
 	config *DeepSeekConfig
 	client *CompatibleOpenAIService
+	models []string
 }
 
 func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
@@ -52,15 +53,28 @@ func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
 		BaseUrl: config.BaseUrl,
 		AiTy:    common.DeepSeek,
 	})
-
 	if err != nil {
 		return nil, err
+	}
+
+	models, err := tmpC.GetSupportModels(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(models) == 0 {
+		return nil, &common.InnerError{
+			ErrType: common.ParameterError,
+			ErrMsg:  "no support model",
+			Code:    0,
+		}
 	}
 
 	log.Infof("[%s] init success", tmpC.GetType())
 	return &DeepSeekService{
 		config: config,
 		client: tmpC,
+		models: models,
 	}, nil
 }
 
@@ -74,4 +88,8 @@ func (s *DeepSeekService) GetTranscription(prompt string, reader io.Reader, mode
 		ErrMsg:  "deepseek not support transcription",
 		Code:    0,
 	}
+}
+
+func (s *DeepSeekService) GetSupportModels() []string {
+	return s.models
 }

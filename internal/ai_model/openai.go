@@ -26,15 +26,12 @@ func (rd *OpenAiConfig) Check() error {
 type OpenAIService struct {
 	config *OpenAiConfig
 	client *CompatibleOpenAIService
+	models []string
 }
 
 func NewOpenAIService(config *OpenAiConfig) (*OpenAIService, error) {
 	if config == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "config is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
 
 	err := config.Check()
@@ -51,10 +48,21 @@ func NewOpenAIService(config *OpenAiConfig) (*OpenAIService, error) {
 		return nil, err
 	}
 
+	models, err := tmpC.GetSupportModels(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(models) == 0 {
+		log.Errorf("no support models")
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "no support models")
+	}
+
 	log.Infof("[%s] init success", tmpC.GetType())
 	return &OpenAIService{
 		config: config,
 		client: tmpC,
+		models: models,
 	}, nil
 }
 
@@ -66,8 +74,13 @@ func (s *OpenAIService) GetTranscription(prompt string, reader io.Reader, model 
 	if prompt == "" {
 		prompt = "生于忧患，死于欢乐。不亦快哉！"
 	}
+
 	if model == "" {
 		model = "whisper-1"
 	}
 	return s.client.GetTranscription(prompt, reader, model, temperature, format, ctx)
+}
+
+func (s *OpenAIService) GetSupportModels() []string {
+	return s.models
 }

@@ -31,6 +31,7 @@ func (rd *GroqConfig) Check() error {
 type GroqService struct {
 	config *GroqConfig
 	client *CompatibleOpenAIService
+	models []string
 }
 
 func NewGroqService(config *GroqConfig) (*GroqService, error) {
@@ -56,10 +57,24 @@ func NewGroqService(config *GroqConfig) (*GroqService, error) {
 		return nil, err
 	}
 
+	models, err := tmpC.GetSupportModels(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	if len(models) == 0 {
+		return nil, &common.InnerError{
+			ErrType: common.ParameterError,
+			ErrMsg:  "no support model",
+			Code:    0,
+		}
+	}
+
 	log.Infof("[%s] init success", tmpC.GetType())
 	return &GroqService{
 		config: config,
 		client: tmpC,
+		models: models,
 	}, nil
 }
 
@@ -76,4 +91,8 @@ func (s *GroqService) GetTranscription(prompt string, reader io.Reader, mode str
 		mode = "whisper-large-v3"
 	}
 	return s.client.GetTranscription(prompt, reader, mode, temperature, format, ctx)
+}
+
+func (s *GroqService) GetSupportModels() []string {
+	return s.models
 }
