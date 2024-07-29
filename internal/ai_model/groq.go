@@ -15,11 +15,7 @@ type GroqConfig struct {
 
 func (rd *GroqConfig) Check() error {
 	if rd.ApiKey == "" {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "api key is empty",
-			Code:    0,
-		}
+		return common.NewInnerErrorWithoutCode(common.ParameterError, "api key is empty")
 	}
 
 	if rd.BaseUrl == "" {

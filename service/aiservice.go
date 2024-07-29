@@ -39,11 +39,7 @@ func (rd *AiConfig) Check() error {
 	}
 
 	if !valid {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "ai config is empty",
-			Code:    0,
-		}
+		return common.NewInnerErrorWithoutCode(common.ParameterError, "ai config is empty")
 	}
 
 	return nil
