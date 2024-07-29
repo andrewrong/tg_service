@@ -22,19 +22,11 @@ type SummaryCommand struct {
 
 func NewSummaryCommand(articleSummaryApp *ai_app.ArticleSummaryApp, url2md *service.Url2MdService, teleContext tele.Context) (*SummaryCommand, error) {
 	if articleSummaryApp == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "article summary app is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "article summary app is empty")
 	}
 
 	if url2md == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "url2md service is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "url2md service is empty")
 	}
 
 	summaryCommand := &SummaryCommand{
@@ -47,11 +39,7 @@ func NewSummaryCommand(articleSummaryApp *ai_app.ArticleSummaryApp, url2md *serv
 	tags := teleContext.Args()
 	if len(tags) == 0 {
 		log.Errorf("summary param is empty")
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "url is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "url is empty")
 	}
 
 	text := tags[0]
@@ -66,11 +54,7 @@ func NewSummaryCommand(articleSummaryApp *ai_app.ArticleSummaryApp, url2md *serv
 
 	if _, err := url.ParseRequestURI(text); err != nil {
 		log.Errorf("invalid url: %s", text)
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "invalid url",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "invalid url")
 	}
 	summaryCommand.url = text
 	if len(tags) > 1 {

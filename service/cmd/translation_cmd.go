@@ -33,19 +33,11 @@ type TSCommand struct {
 
 func NewTSCommand(translateApp *ai_app.TranslateApp, url2md *service.Url2MdService, teleContext tele.Context) (*TSCommand, error) {
 	if translateApp == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "translate app is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "translate app is empty")
 	}
 
 	if url2md == nil {
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "url2md service is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "url2md service is empty")
 	}
 
 	tsCommand := &TSCommand{
@@ -57,11 +49,7 @@ func NewTSCommand(translateApp *ai_app.TranslateApp, url2md *service.Url2MdServi
 	tags := teleContext.Args()
 	if len(tags) == 0 {
 		log.Errorf("ts param is empty")
-		return nil, &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "text is empty",
-			Code:    0,
-		}
+		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "text is empty")
 	}
 
 	text := tags[0]
