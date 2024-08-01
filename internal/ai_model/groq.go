@@ -8,29 +8,13 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type GroqConfig struct {
-	ApiKey  string `json:"api_key"`
-	BaseUrl string `json:"base_url"`
-}
-
-func (rd *GroqConfig) Check() error {
-	if rd.ApiKey == "" {
-		return common.NewInnerErrorWithoutCode(common.ParameterError, "api key is empty")
-	}
-
-	if rd.BaseUrl == "" {
-		rd.BaseUrl = "https://api.groq.com/openai/v1"
-	}
-	return nil
-}
-
 type GroqService struct {
-	config *GroqConfig
+	config *common.GroqConfig
 	client *CompatibleOpenAIService
 	models []string
 }
 
-func NewGroqService(config *GroqConfig) (*GroqService, error) {
+func NewGroqService(config *common.GroqConfig) (*GroqService, error) {
 	if config == nil {
 		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
@@ -40,7 +24,7 @@ func NewGroqService(config *GroqConfig) (*GroqService, error) {
 		return nil, err
 	}
 
-	tmpC, err := NewCompatibleOpenAIService(&CompatibleOpenAIConfig{
+	tmpC, err := NewCompatibleOpenAIService(&common.CompatibleOpenAIConfig{
 		ApiKey:  config.ApiKey,
 		BaseUrl: config.BaseUrl,
 		AiTy:    common.Groq,
@@ -83,4 +67,8 @@ func (s *GroqService) GetTranscription(prompt string, reader io.Reader, mode str
 
 func (s *GroqService) GetSupportModels() []string {
 	return s.models
+}
+
+func (s *GroqService) GetDefaultModel() string {
+	return "llama-3.1-8b-instant"
 }

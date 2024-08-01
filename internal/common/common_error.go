@@ -31,3 +31,19 @@ func (e *InnerError) GetCode() int {
 func (e *InnerError) GetType() ErrorType {
 	return e.ErrType
 }
+
+func NewInnerError(errType ErrorType, errMsg string, code int) *InnerError {
+	return &InnerError{
+		ErrType: errType,
+		ErrMsg:  errMsg,
+		Code:    code,
+	}
+}
+
+func NewInnerErrorWithoutCode(errorType ErrorType, essMsg string) *InnerError {
+	return &InnerError{
+		ErrType: errorType,
+		ErrMsg:  essMsg,
+		Code:    0,
+	}
+}

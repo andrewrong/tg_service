@@ -11,33 +11,12 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type CompatibleOpenAIConfig struct {
-	ApiKey  string        `json:"api_key"`
-	BaseUrl string        `json:"base_url"`
-	AiTy    common.AiType `json:"ai_ty"`
-}
-
-func (rd *CompatibleOpenAIConfig) Check() error {
-	if rd.ApiKey == "" {
-		return common.NewInnerErrorWithoutCode(common.ParameterError, "api key is empty")
-	}
-
-	if err := rd.AiTy.Check(); err != nil {
-		return err
-	}
-
-	if rd.BaseUrl == "" && rd.AiTy != common.OpenAI {
-		return common.NewInnerErrorWithoutCode(common.ParameterError, "base url is empty")
-	}
-	return nil
-}
-
 type CompatibleOpenAIService struct {
-	config *CompatibleOpenAIConfig
+	config *common.CompatibleOpenAIConfig
 	client *openai.Client
 }
 
-func NewCompatibleOpenAIService(config *CompatibleOpenAIConfig) (*CompatibleOpenAIService, error) {
+func NewCompatibleOpenAIService(config *common.CompatibleOpenAIConfig) (*CompatibleOpenAIService, error) {
 	if config == nil {
 		log.Errorf("CompatibleOpenAIConfig is empty")
 		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
@@ -92,10 +71,6 @@ func (s *CompatibleOpenAIService) GetCompletion(prompt, systemMessage, model str
 
 func (s *CompatibleOpenAIService) GetType() common.AiType {
 	return s.config.AiTy
-}
-
-func (s *CompatibleOpenAIService) GetCompletionStream(prompt, systemMessage, model string, temperature float32, jsonModel bool, ctx context.Context) (string, error) {
-	return "", nil
 }
 
 func (s *CompatibleOpenAIService) GetTranscription(prompt string, reader io.Reader, mode string, temperature float32, format common.TranscriptionFormat, ctx context.Context) (string, error) {

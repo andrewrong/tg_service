@@ -8,29 +8,13 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type DeepSeekConfig struct {
-	ApiKey  string `json:"api_key"`
-	BaseUrl string `json:"base_url"`
-}
-
-func (rd *DeepSeekConfig) Check() error {
-	if rd.ApiKey == "" {
-		return common.NewInnerErrorWithoutCode(common.ParameterError, "api key is empty")
-	}
-
-	if rd.BaseUrl == "" {
-		rd.BaseUrl = "https://api.deepseek.com/v1"
-	}
-	return nil
-}
-
 type DeepSeekService struct {
-	config *DeepSeekConfig
+	config *common.DeepSeekConfig
 	client *CompatibleOpenAIService
 	models []string
 }
 
-func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
+func NewDeepSeekService(config *common.DeepSeekConfig) (*DeepSeekService, error) {
 	if config == nil {
 		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
@@ -40,7 +24,7 @@ func NewDeepSeekService(config *DeepSeekConfig) (*DeepSeekService, error) {
 		return nil, err
 	}
 
-	tmpC, err := NewCompatibleOpenAIService(&CompatibleOpenAIConfig{
+	tmpC, err := NewCompatibleOpenAIService(&common.CompatibleOpenAIConfig{
 		ApiKey:  config.ApiKey,
 		BaseUrl: config.BaseUrl,
 		AiTy:    common.DeepSeek,
@@ -80,4 +64,8 @@ func (s *DeepSeekService) GetTranscription(prompt string, reader io.Reader, mode
 
 func (s *DeepSeekService) GetSupportModels() []string {
 	return s.models
+}
+
+func (s *DeepSeekService) GetDefaultModel() string {
+	return "deepseek-chat"
 }

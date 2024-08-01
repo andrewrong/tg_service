@@ -8,28 +8,13 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type OpenAiConfig struct {
-	ApiKey string `json:"api_key"`
-}
-
-func (rd *OpenAiConfig) Check() error {
-	if rd.ApiKey == "" {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "api key is empty",
-			Code:    0,
-		}
-	}
-	return nil
-}
-
 type OpenAIService struct {
-	config *OpenAiConfig
+	config *common.OpenAiConfig
 	client *CompatibleOpenAIService
 	models []string
 }
 
-func NewOpenAIService(config *OpenAiConfig) (*OpenAIService, error) {
+func NewOpenAIService(config *common.OpenAiConfig) (*OpenAIService, error) {
 	if config == nil {
 		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
@@ -39,7 +24,7 @@ func NewOpenAIService(config *OpenAiConfig) (*OpenAIService, error) {
 		return nil, err
 	}
 
-	tmpC, err := NewCompatibleOpenAIService(&CompatibleOpenAIConfig{
+	tmpC, err := NewCompatibleOpenAIService(&common.CompatibleOpenAIConfig{
 		ApiKey:  config.ApiKey,
 		AiTy:    common.OpenAI,
 		BaseUrl: "https://api.openai.com/v1",
@@ -83,4 +68,8 @@ func (s *OpenAIService) GetTranscription(prompt string, reader io.Reader, model 
 
 func (s *OpenAIService) GetSupportModels() []string {
 	return s.models
+}
+
+func (s *OpenAIService) GetDefaultModel() string {
+	return "gpt-4o-mini"
 }

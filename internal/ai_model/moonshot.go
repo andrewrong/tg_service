@@ -8,29 +8,13 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type MoonShotConfig struct {
-	ApiKey  string `json:"api_key"`
-	BaseUrl string `json:"base_url"`
-}
-
-func (rd *MoonShotConfig) Check() error {
-	if rd.ApiKey == "" {
-		return common.NewInnerErrorWithoutCode(common.ParameterError, "api key is empty")
-	}
-
-	if rd.BaseUrl == "" {
-		rd.BaseUrl = "https://api.moonshot.cn/v1"
-	}
-	return nil
-}
-
 type MoonShotService struct {
-	config *MoonShotConfig
+	config *common.MoonShotConfig
 	client *CompatibleOpenAIService
 	models []string
 }
 
-func NewMoonShotService(config *MoonShotConfig) (*MoonShotService, error) {
+func NewMoonShotService(config *common.MoonShotConfig) (*MoonShotService, error) {
 	if config == nil {
 		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "config is empty")
 	}
@@ -40,7 +24,7 @@ func NewMoonShotService(config *MoonShotConfig) (*MoonShotService, error) {
 		return nil, err
 	}
 
-	tmpC, err := NewCompatibleOpenAIService(&CompatibleOpenAIConfig{
+	tmpC, err := NewCompatibleOpenAIService(&common.CompatibleOpenAIConfig{
 		ApiKey:  config.ApiKey,
 		BaseUrl: config.BaseUrl,
 		AiTy:    common.MoonShot,
@@ -71,4 +55,8 @@ func (s *MoonShotService) GetTranscription(prompt string, reader io.Reader, mode
 
 func (s *MoonShotService) GetSupportModels() []string {
 	return s.models
+}
+
+func (s *MoonShotService) GetDefaultModel() string {
+	return "moonshot-v1-8k"
 }

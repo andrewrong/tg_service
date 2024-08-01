@@ -2,10 +2,13 @@ package ai_app
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/tiktoken-go/tokenizer"
+
+	"tg_ai_service/internal/common"
 )
 
 func TestNumTokensInString(t *testing.T) {
@@ -143,6 +146,10 @@ func TestTranslateApp_Translate(t *testing.T) {
 
 // MockAI is a mock implementation of the common.AI interface for testing purposes
 type MockAI struct{}
+
+func (m *MockAI) GetTranscription(prompt string, reader io.Reader, voiceMode string, temperature float32, audioFormat common.TranscriptionFormat, ctx context.Context) (string, error) {
+	return "mock transcription", nil
+}
 
 func (m *MockAI) GetCompletion(prompt, systemMessage, model string, temperature float32, jsonModel bool, ctx context.Context) (string, error) {
 	return "mock translation", nil

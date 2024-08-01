@@ -17,21 +17,22 @@ const (
 	DEFAULT_TARGET_LANG = "Chinese"
 )
 
-// 翻译的命令, /ts url|text sourcelanguage targetlanguage (内部识别是text还是url)
-type TSCommand struct {
-	translateApp *ai_app.TranslateApp
-	url2md       *service.Url2MdService
-	text         string
-	isUrl        bool
-	teleContext  tele.Context
-
+type TranslationParams struct {
+	IsUrl bool
+	Text  string
 	// 源语言
 	SourceLanguage string
 	// 目标语言
 	TargetLanguage string
 }
 
-func NewTSCommand(translateApp *ai_app.TranslateApp, url2md *service.Url2MdService, teleContext tele.Context) (*TSCommand, error) {
+// 翻译的命令, /ts url|text sourcelanguage targetlanguage (内部识别是text还是url)
+type TSCommand struct {
+	translateApp *ai_app.TranslateApp
+	url2md       *service.Url2MdService
+}
+
+func NewTSCommand(translateApp *ai_app.TranslateApp, url2md *service.Url2MdService) (*TSCommand, error) {
 	if translateApp == nil {
 		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "translate app is empty")
 	}
@@ -42,14 +43,26 @@ func NewTSCommand(translateApp *ai_app.TranslateApp, url2md *service.Url2MdServi
 
 	tsCommand := &TSCommand{
 		translateApp: translateApp,
-		teleContext:  teleContext,
 		url2md:       url2md,
 	}
 
-	tags := teleContext.Args()
+	return tsCommand, nil
+}
+
+func (ts *TSCommand) Name() common.CmdName {
+	return common.TS
+}
+
+func (ts *TSCommand) parseArgs(tCtx tele.Context) (*TranslationParams, error) {
+	tsCommand := &TranslationParams{}
+
+	tags := tCtx.Args()
 	if len(tags) == 0 {
-		log.Errorf("ts param is empty")
-		return nil, common.NewInnerErrorWithoutCode(common.ParameterError, "text is empty")
+		tsCommand.IsUrl = false
+		tsCommand.Text = tCtx.Message().Text
+		tsCommand.SourceLanguage = DEFAULT_SOURCE_LANG
+		tsCommand.TargetLanguage = DEFAULT_TARGET_LANG
+		return tsCommand, nil
 	}
 
 	text := tags[0]
@@ -63,9 +76,9 @@ func NewTSCommand(translateApp *ai_app.TranslateApp, url2md *service.Url2MdServi
 	}
 
 	if _, err := url.ParseRequestURI(text); err == nil {
-		tsCommand.isUrl = true
+		tsCommand.IsUrl = true
 	}
-	tsCommand.text = text
+	tsCommand.Text = text
 	tsCommand.SourceLanguage = DEFAULT_SOURCE_LANG
 	tsCommand.TargetLanguage = DEFAULT_TARGET_LANG
 
@@ -87,23 +100,23 @@ func NewTSCommand(translateApp *ai_app.TranslateApp, url2md *service.Url2MdServi
 		tsCommand.SourceLanguage = source
 		tsCommand.TargetLanguage = target
 	}
-
 	return tsCommand, nil
 }
 
-func (ts *TSCommand) Execute() {
+func (ts *TSCommand) Execute(tCtx tele.Context) {
 	var err error = nil
 	result := ""
+	var args *TranslationParams = nil
 
 	defer func() {
 		if err != nil {
-			_ = ts.teleContext.Reply(err.Error())
+			_ = tCtx.Reply(err.Error())
 			return
 		}
 
 		chunkMsgs := common.SplitBySize(result, 4000)
 		for i, msg := range chunkMsgs {
-			err = ts.teleContext.Reply(msg, &tele.SendOptions{
+			err = tCtx.Reply(msg, &tele.SendOptions{
 				ParseMode: tele.ModeMarkdown,
 			})
 			if err != nil {
@@ -112,17 +125,22 @@ func (ts *TSCommand) Execute() {
 		}
 	}()
 
-	if ts.isUrl {
-		content, tmpE := ts.url2md.GetUrl2Md(ts.text)
+	args, err = ts.parseArgs(tCtx)
+	if err != nil {
+		return
+	}
+
+	if args.IsUrl {
+		content, tmpE := ts.url2md.GetUrl2Md(args.Text)
 		if tmpE != nil {
 			err = tmpE
 			return
 		}
-		ts.text = content.Content
+		args.Text = content.Content
 	}
 
 	ctx := context.Background()
-	result, err = ts.translateApp.Translate(ts.SourceLanguage, ts.TargetLanguage, ts.text, "", 2000, ctx)
+	result, err = ts.translateApp.Translate(args.SourceLanguage, args.TargetLanguage, args.Text, "", 0, ctx)
 	if err != nil {
 		return
 	}

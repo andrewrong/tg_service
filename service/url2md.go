@@ -13,39 +13,12 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type Url2MdConfig struct {
-	BearerToken string `json:"bearer_token"` // bear token
-	TimeoutMs   int    `json:"timeout_ms"`   // 超时时间
-	ServiceUrl  string `json:"service_url"`  // service url
-}
-
-func (rd *Url2MdConfig) Check() error {
-	if rd.BearerToken == "" {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "bear token is empty",
-			Code:    0,
-		}
-	}
-	if rd.ServiceUrl == "" {
-		return &common.InnerError{
-			ErrType: common.ParameterError,
-			ErrMsg:  "service url is empty",
-			Code:    0,
-		}
-	}
-	if rd.TimeoutMs <= 0 {
-		rd.TimeoutMs = 60 * 1000
-	}
-	return nil
-}
-
 type Url2MdService struct {
-	config *Url2MdConfig
+	config *common.Url2MdConfig
 	client *http.Client
 }
 
-func NewUrl2MdService(config *Url2MdConfig) (*Url2MdService, error) {
+func NewUrl2MdService(config *common.Url2MdConfig) (*Url2MdService, error) {
 	if config == nil {
 		return nil, &common.InnerError{
 			ErrType: common.ParameterError,

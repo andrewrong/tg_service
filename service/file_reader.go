@@ -12,27 +12,11 @@ import (
 	"tg_ai_service/internal/log"
 )
 
-type FileReaderConfig struct {
-	TimeoutMs  int32  `json:"timeout_ms"` // 超时时间
-	PdfBaseUrl string `json:"base_url"`   //jinra的base url
-}
-
-func (rd *FileReaderConfig) Check() error {
-	if rd.PdfBaseUrl == "" {
-		rd.PdfBaseUrl = "https://r.jina.ai/"
-	}
-
-	if rd.TimeoutMs <= 0 {
-		rd.TimeoutMs = 30 * 1000
-	}
-	return nil
-}
-
 type FileReaderService struct {
-	config *FileReaderConfig
+	config *common.FileReaderConfig
 }
 
-func NewFileReaderService(config *FileReaderConfig) (*FileReaderService, error) {
+func NewFileReaderService(config *common.FileReaderConfig) (*FileReaderService, error) {
 	if config == nil {
 		return nil, &common.InnerError{
 			ErrType: common.ParameterError,

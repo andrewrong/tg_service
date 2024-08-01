@@ -9,26 +9,32 @@ import (
 	"github.com/tiktoken-go/tokenizer"
 	"github.com/tmc/langchaingo/textsplitter"
 
+	"tg_ai_service/internal/ai_model"
 	"tg_ai_service/internal/common"
 	"tg_ai_service/internal/log"
 )
 
 const (
-	MAX_TOKENS_PER_CHUNK = 500
+	MAX_TOKENS_PER_CHUNK = 1500
 )
 
 type TranslateApp struct {
 	ai              common.AI
 	defaultModel    string
 	chunksInContext int
+	maxToken        int
 }
 
-func NewTranslateApp(ai common.AI, defaultModel string, chunksInContext int) *TranslateApp {
+func NewTranslateApp(cfg *common.TranslateAppConfig, aiS *ai_model.AiService) (*TranslateApp, error) {
+	ai := aiS.GetAiByType(cfg.AiT)
+	chunksInContext := cfg.ChunksInContext
+
 	return &TranslateApp{
 		ai:              ai,
-		defaultModel:    defaultModel,
+		defaultModel:    cfg.Model,
 		chunksInContext: chunksInContext,
-	}
+		maxToken:        cfg.MaxToken,
+	}, nil
 }
 
 func (t *TranslateApp) oneChunkInitialTranslation(sourceLang, targetLang, sourceText string, stepRecord *common.TranslateStepRecord, ctx context.Context) (translation string, err error) {
@@ -273,7 +279,7 @@ func calculateChunkSize(tokenCount, tokenLimit int) int {
 
 func (t *TranslateApp) Translate(sourceLang, targetLang, sourceText, country string, maxTokens int, ctx context.Context) (string, error) {
 	if maxTokens <= 0 {
-		maxTokens = MAX_TOKENS_PER_CHUNK
+		maxTokens = t.maxToken
 	}
 
 	numTokensInText, err := numTokensInString(sourceText, "cl100k_base")
@@ -363,7 +369,7 @@ func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang strin
 
 			defer func() {
 				if err != nil {
-					log.Errorf("[multi init chunk:%d]run ai serive is error:%s", idx, err)
+					log.Errorf("[multi init chunk:%d]run voiceAi serive is error:%s", idx, err)
 					return
 				}
 				inputToken, _ := numTokensInString(prompt, "cl100k_base")
@@ -377,7 +383,7 @@ func (t *TranslateApp) multiChunkInitialTranslation(sourceLang, targetLang strin
 
 			translation, err = t.ai.GetCompletion(prompt, systemMessage, t.defaultModel, 0.3, false, ctx)
 			if err != nil {
-				log.Errorf("run ai service is error:%s", err)
+				log.Errorf("run voiceAi service is error:%s", err)
 				return "", &common.InnerError{
 					ErrType: common.ExternalServiceError,
 					ErrMsg:  err.Error(),
@@ -480,7 +486,7 @@ func (t *TranslateApp) multiChunkReflectOnTranslation(sourceLang, targetLang str
 			start := time.Now()
 			defer func() {
 				if err != nil {
-					log.Errorf("[multi refection chunk:%d]run ai serive is error:%s", idx, err)
+					log.Errorf("[multi refection chunk:%d]run voiceAi serive is error:%s", idx, err)
 					return
 				}
 				inputToken, _ := numTokensInString(prompt, "cl100k_base")
@@ -558,7 +564,7 @@ func (t *TranslateApp) multiChunkImproveTranslation(sourceLang, targetLang strin
 
 			defer func() {
 				if err != nil {
-					log.Errorf("[multi improvement chunk:%d]run ai serive is error:%s", idx, err)
+					log.Errorf("[multi improvement chunk:%d]run voiceAi serive is error:%s", idx, err)
 					return
 				}
 				inputToken, _ := numTokensInString(prompt, "cl100k_base")

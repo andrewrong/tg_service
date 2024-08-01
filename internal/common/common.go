@@ -13,6 +13,7 @@ import (
 
 	"github.com/h2non/filetype"
 	"github.com/yuin/goldmark"
+	tele "gopkg.in/telebot.v3"
 
 	"tg_ai_service/internal/log"
 )
@@ -33,7 +34,15 @@ type Checker interface {
 
 type AI interface {
 	GetCompletion(prompt, systemMessage, mode string, temperature float32, jsonModel bool, ctx context.Context) (string, error)
-	GetTranscription(prompt string, reader io.Reader, mode string, temperature float32, audioFormat TranscriptionFormat, ctx context.Context) (string, error)
+	GetTranscription(prompt string, reader io.Reader, voiceMode string, temperature float32, audioFormat TranscriptionFormat, ctx context.Context) (string, error)
+	GetSupportModels() []string
+
+	GetDefaultModel() string
+}
+
+type Cmd interface {
+	Execute(ctx tele.Context)
+	Name() CmdName
 }
 
 type TranscriptionFormat string
@@ -46,15 +55,16 @@ const (
 	VJSON TranscriptionFormat = "verbose_json"
 )
 
-var TranscriptionFormats = []TranscriptionFormat{JSON, TEXT, SRT, VTT, VJSON}
-
-func IsValidTranscriptionFormat(t TranscriptionFormat) bool {
-	for _, v := range TranscriptionFormats {
-		if v == t {
-			return true
-		}
+func (t *TranscriptionFormat) Check() error {
+	switch *t {
+	case JSON, TEXT, SRT, VTT, VJSON:
+		return nil
 	}
-	return false
+	return &InnerError{
+		ErrType: ParameterError,
+		ErrMsg:  fmt.Sprintf("invalid TranscriptionFormat: %s", *t),
+		Code:    0,
+	}
 }
 
 // isValidURL 解析并验证 URL 的合法性
@@ -78,7 +88,19 @@ const (
 	Groq     AiType = "groq"
 )
 
-var AiTypes = []AiType{OpenAI, DeepSeek, MoonShot, Groq}
+func (a *AiType) Check() error {
+	switch *a {
+	case OpenAI, DeepSeek, MoonShot, Groq:
+		return nil
+	}
+
+	log.Errorf("invalid AiType: %s", *a)
+	return &InnerError{
+		ErrType: ParameterError,
+		ErrMsg:  fmt.Sprintf("invalid AiType: %s", *a),
+		Code:    0,
+	}
+}
 
 type OneAiRecord struct {
 	Cost        int64 `json:"cost"` // 耗时
@@ -243,15 +265,10 @@ func GetFileType(filePath string) (string, error) {
 	return kind.Extension, nil
 }
 
-type NameReader struct {
-	Reader   io.Reader
-	FilePath string
-}
+type CmdName string
 
-func (r *NameReader) Read(p []byte) (n int, err error) {
-	return r.Reader.Read(p)
-}
-
-func (r *NameReader) Name() string {
-	return r.FilePath
-}
+const (
+	TS            CmdName = "/ts"
+	SUMMARY       CmdName = "/summary"
+	VOICE_TO_TEXT CmdName = "/v2t"
+)

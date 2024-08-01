@@ -3,6 +3,7 @@ package ai_app
 import (
 	"context"
 
+	"tg_ai_service/internal/ai_model"
 	"tg_ai_service/internal/common"
 )
 
@@ -11,23 +12,21 @@ type ArticleSummaryApp struct {
 	defaultModel string
 }
 
-func NewArticleSummaryApp(ai common.AI, defaultModel string) *ArticleSummaryApp {
-	if defaultModel == "" {
-		defaultModel = "gpt-4o-mini"
-	}
+func NewArticleSummaryApp(cfg *common.ArticleSummaryAppConfig, aiS *ai_model.AiService) (*ArticleSummaryApp, error) {
+	ai := aiS.GetAiByType(cfg.AiT)
 	return &ArticleSummaryApp{
 		ai:           ai,
-		defaultModel: defaultModel,
-	}
+		defaultModel: cfg.Model,
+	}, nil
 }
 
 func (s *ArticleSummaryApp) GetSummary(text string, model string, ctx context.Context) (string, error) {
 	if text == "" {
 		return "", nil
 	}
-
-	if model == "" {
-		model = s.defaultModel
+	summaryModel := model
+	if summaryModel == "" {
+		summaryModel = s.defaultModel
 	}
 
 	systemPrompt := `# Role：文章分析专家
@@ -92,7 +91,7 @@ func (s *ArticleSummaryApp) GetSummary(text string, model string, ctx context.Co
 
 ## Initialization
 As a 文章分析专家, you must follow the Constrains, you must talk to user in default Language.`
-	summary, err := s.ai.GetCompletion(text, systemPrompt, s.defaultModel, 0.3, false, ctx)
+	summary, err := s.ai.GetCompletion(text, systemPrompt, summaryModel, 0.3, false, ctx)
 	if err != nil {
 		return "", err
 	}
