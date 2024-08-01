@@ -4,8 +4,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/spf13/viper"
 	tele "gopkg.in/telebot.v3"
 
+	"tg_ai_service/internal/common"
 	"tg_ai_service/internal/log"
 	"tg_ai_service/service"
 	"tg_ai_service/service/ai_app"
@@ -13,10 +15,26 @@ import (
 )
 
 func main() {
+	// Initialize Viper to read configuration
+	viper.SetConfigName("xxx") // name of config file (without extension)
+	viper.SetConfigType("json") // REQUIRED if the config file does not have the extension in the name
+	viper.AddConfigPath(".")    // path to look for the config file in
+	viper.AddConfigPath("/etc/tg_ai_service/") // call multiple times to add many search paths
+	viper.AddConfigPath("$HOME/.tg_ai_service") // call multiple times to add many search paths
+
+	if err := viper.ReadInConfig(); err != nil {
+		log.Fatalf("Error reading config file, %s", err)
+	}
+
+	var config common.TgAiConfig
+	err := viper.Unmarshal(&config)
+	if err != nil {
+		log.Fatalf("Unable to decode into struct, %v", err)
+	}
 
 	// 关于tg_bot的使用
 	pref := tele.Settings{
-		Token:  os.Getenv("TG_TOKEN"),
+		Token:  config.TgToken,
 		Poller: &tele.LongPoller{Timeout: 10 * time.Second},
 	}
 
@@ -28,8 +46,8 @@ func main() {
 
 	// 启动一些服务做测试
 	url2md, _ := service.NewUrl2MdService(&service.Url2MdConfig{
-		BearerToken: os.Getenv("URL2MD_TOKEN"),
-		ServiceUrl:  os.Getenv("URL2MD_SERVICE_URL"),
+		BearerToken: config.AiAppCfg.SummaryCfg.Model, // Assuming the model is used as BearerToken for simplicity
+		ServiceUrl:  config.AiAppCfg.SummaryCfg.Model, // Assuming the model is used as ServiceUrl for simplicity
 	})
 
 	var aiS *service.AiService = nil
