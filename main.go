@@ -4,21 +4,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/joho/godotenv"
-
 	tele "gopkg.in/telebot.v3"
 
-	"tg_ai_service/internal/ai_model"
 	"tg_ai_service/internal/log"
 	"tg_ai_service/service"
 	"tg_ai_service/service/ai_app"
+	"tg_ai_service/service/cmd"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file")
-	}
 
 	// 关于tg_bot的使用
 	pref := tele.Settings{
@@ -37,20 +31,21 @@ func main() {
 		BearerToken: os.Getenv("URL2MD_TOKEN"),
 		ServiceUrl:  os.Getenv("URL2MD_SERVICE_URL"),
 	})
-	aiS, err := service.NewAiService(&service.AiConfig{
-		DeepseekConfig: &ai_model.DeepSeekConfig{
-			ApiKey: os.Getenv("DEEPSEEK_TOKEN"),
-		},
-		GroqConfig: &ai_model.GroqConfig{
-			ApiKey: os.Getenv("GROQ_TOKEN"),
-		},
-		OpenaiConfig: &ai_model.OpenAiConfig{
-			ApiKey: os.Getenv("OPENAI_TOKEN"),
-		},
-	})
-	if err != nil {
-		log.Errorf("[main] new ai service error: %s", err.Error())
-		return
+
+	var aiS *service.AiService = nil
+	{
+	}
+
+	cmdService := cmd.NewCommandService()
+	{
+		//初始化各种ai app
+		translateS, tmpE := ai_app.NewTranslateApp(aiS.GetOpenAiService(), aiS.GetOpenAiService().GetDefaultModel(), 6)
+		if tmpE != nil {
+			log.Errorf("[main] new translate app error: %s", tmpE.Error())
+			return
+		}
+
+		cmdService.AddCommand(translateS)
 	}
 
 	translateS := ai_app.NewTranslateApp(aiS.GetGroqService(), "llama-3.1-70b-versatile", 6)
